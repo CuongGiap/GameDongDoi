@@ -75,7 +75,7 @@ Không thể chơi thử một game 7-ngày-một-năm bằng thời gian thật
 
 ```
 node qa.js      # 70 ca — engine, cân bằng, ngân hàng câu hỏi
-node qa-ui.js   # 30 ca — tầng giao diện
+node qa-ui.js   # 40 ca — tầng giao diện
 ```
 
 70 ca kiểm thử trên engine, kèm mô phỏng 900 lượt chơi tự động để kiểm tra độ khó.

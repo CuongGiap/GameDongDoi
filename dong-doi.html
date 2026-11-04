@@ -1097,11 +1097,17 @@ function nhatKy(chu, huong) {
   if (S.nhatKy.length > 40) S.nhatKy.length = 40;
 }
 
-function dongHop() { $("manHop").innerHTML = ""; }
+/* Hộp nào đang mở. Dùng để chặn vòng lặp mỗi giây vẽ đè lên hộp ĐANG mở,
+   mà vẫn cho phép chuyển từ hộp này sang hộp khác (thi → kết quả năm học).
+   Chốt chặn theo kiểu "có hộp nào mở thì thôi" sẽ làm kẹt ở màn thi. */
+let hopHienTai = null;
 
-function moHop(html) {
+function dongHop() { $("manHop").innerHTML = ""; hopHienTai = null; }
+
+function moHop(html, ten) {
   const m = $("manHop");
   m.innerHTML = `<div class="man"><div class="hop" role="dialog" aria-modal="true">${html}</div></div>`;
+  hopHienTai = ten || null;
   const f = m.querySelector("button, input");
   if (f) f.focus();
 }
@@ -1134,7 +1140,7 @@ function manTao() {
     </div>
     <button class="nut-chinh" id="btTao">Bắt đầu</button>
     <p class="cc-ghi" style="text-align:center">Tiến trình lưu ngay trong trình duyệt này.</p>
-  `);
+  `, "tao");
 
   let gt = "nam";
   const dat = g => {
@@ -1495,7 +1501,7 @@ function veCauHoi() {
     <h3 style="margin:10px 0 16px">${q.cau.h}</h3>
     <div class="lc-list">${dapAn}</div>
     ${phanHoi}
-  `);
+  `, "thi");
 
   if (!daTraLoi) {
     for (const b of document.querySelectorAll(".lc[data-j]")) {
@@ -1554,7 +1560,7 @@ function chotThi(loai, lamBai) {
       <p class="hop-mo">Điểm kiểm tra đã kéo điểm từng môn lên hoặc xuống.</p>
       ${hang}${phe}
       <div style="margin-top:18px"><button class="nut-chinh" id="btOk">Về lớp học tiếp</button></div>
-    `);
+    `, "giuaky");
     $("btOk").onclick = () => { dongHop(); Luu.ghi(S); nhip(); };
     return;
   }
@@ -1578,7 +1584,7 @@ function hangDiem(x) {
 function manKetNam() {
   const r = S.hetNam;
   if (!r) return;
-  if (document.querySelector(".man")) return;   // đang mở hộp khác thì đừng vẽ đè
+  if (hopHienTai === "ketnam") return;   // đã hiện rồi thì đừng vẽ lại mỗi giây
   const hang = r.kq.map(hangDiem).join("");
 
   const dat = r.dat;
@@ -1603,7 +1609,7 @@ function manKetNam() {
     </div>
     <p class="phe">${phe}</p>
     <div style="margin-top:18px">${nut}</div>
-  `);
+  `, "ketnam");
 
   if (r.choThiLai) {
     $("btLai").onclick = () => {
@@ -1631,7 +1637,7 @@ function manKetNam() {
 function manSuKien() {
   const sk = Engine.timSuKien(S.choSuKien);
   if (!sk) { S.choSuKien = null; return; }
-  if (document.querySelector(".man")) return;
+  if (hopHienTai === "sukien") return;   // đã hiện rồi thì đừng vẽ lại mỗi giây
 
   const lc = sk.lc.map((c, i) => {
     const mo = c.dk ? !c.dk(S) : false;
@@ -1643,7 +1649,7 @@ function manSuKien() {
     <h3>${sk.ten}</h3>
     <p class="hop-mo">${sk.mo}</p>
     <div class="lc-list">${lc}</div>
-  `);
+  `, "sukien");
 
   for (const b of document.querySelectorAll(".lc")) {
     b.onclick = () => {
@@ -1666,7 +1672,7 @@ function manHetNoiDung() {
     <div class="mon-row"><div class="mon-ten">Trí tuệ</div><div class="mon-diem num" style="font-size:22px">${soNguyen(S.triTue)}</div></div>
     <p class="phe">${S.soLuuBan === 0 ? "Đi đúng tuổi, không trượt năm nào." : `Chậm mất ${S.soLuuBan} năm so với bạn cùng lứa.`}</p>
     <div style="margin-top:18px"><button class="nut-chinh" id="btMoi">Chơi lại từ đầu</button></div>
-  `);
+  `, "hetnoidung");
   $("btMoi").onclick = () => { Luu.xoa(); S = null; dongHop(); manTao(); };
 }
 
@@ -1701,7 +1707,7 @@ $("ccXoa").onclick = () => {
       <button class="lc" id="btXoaOk" style="border-color:var(--but-do);color:var(--but-do)">Xoá và tạo nhân vật mới</button>
       <button class="lc" id="btXoaHuy">Giữ lại</button>
     </div>
-  `);
+  `, "xacnhanxoa");
   $("btXoaOk").onclick = () => { Luu.xoa(); S = null; if (heNhip) clearInterval(heNhip); dongHop(); manTao(); };
   $("btXoaHuy").onclick = dongHop;
 };

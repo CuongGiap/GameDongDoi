@@ -115,6 +115,8 @@ const cauNoi = `
   get BaiThi(){return BaiThi}, set BaiThi(v){BaiThi=v},
   get noiHienTai(){return noiHienTai}, set noiHienTai(v){noiHienTai=v},
   get monChon(){return monChon}, set monChon(v){monChon=v},
+  get hopHienTai(){return hopHienTai},
+  get hopHTML(){return document.getElementById("manHop").innerHTML},
   ve, batDauChoi, vaoThi, traLoi, cauTiep, veCauHoi, nhatKy, chayHanhDong
 };`;
 
@@ -216,6 +218,17 @@ check("U0.2 vào được màn chơi", kho.manChoi.hidden === false);
   }
   check("U6.3 làm hết bài không treo", dem === 12, "đã làm " + dem + " câu");
   check("U6.4 nộp xong có kết quả năm học", !!g.S.hetNam);
+
+  // Dữ liệu đúng chưa đủ — người chơi phải THẤY được kết quả.
+  // Bộ test cũ chỉ kiểm S.hetNam nên đã để lọt lỗi kẹt ở màn thi.
+  check("U6.4b bấm Nộp bài thì chuyển sang màn kết quả",
+    g.hopHienTai === "ketnam", "hộp đang mở: " + g.hopHienTai);
+  check("U6.4c không còn kẹt ở câu hỏi thi",
+    g.hopHTML.indexOf("Nộp bài") < 0 && g.hopHTML.indexOf("Câu ") < 0);
+
+  for (let i = 0; i < 5; i++) g.ve();
+  check("U6.4d màn kết quả đứng yên qua 5 nhịp",
+    g.hopHienTai === "ketnam" && g.hopHTML.indexOf("Nộp bài") < 0);
   if (g.S.hetNam) {
     const toan = g.S.hetNam.kq.find(x => x.id === "toan");
     check("U6.5 đúng hết thì điểm Toán cao", toan.diem >= 8, toan.diem.toFixed(2));
@@ -261,6 +274,33 @@ check("U0.2 vào được màn chơi", kho.manChoi.hidden === false);
       g.BaiThi.boBot.indexOf(g.BaiThi.de[g.BaiThi.i].cau.iDung) < 0);
   }
   g.BaiThi = null; g.S.hetNam = null;
+}
+
+/* ---------- U9: không hộp thoại nào được chặn hộp kế tiếp ---------- */
+{
+  // mỗi hộp phải mang một tên riêng, nếu không chốt chặn sẽ nhận nhầm nhau
+  const html = fs.readFileSync(path.join(__dirname, "dong-doi.html"), "utf8");
+  const ten = (html.match(/`,\s*"(\w+)"\);/g) || []).map(s => s.match(/"(\w+)"/)[1]);
+  check("U9.1 mọi hộp thoại đều được đặt tên", ten.length >= 7, ten.length + ": " + ten.join(","));
+  check("U9.2 tên hộp không trùng nhau", new Set(ten).size === ten.length, ten.join(","));
+  const khongTen = (html.match(/moHop\(`[\s\S]*?`\);/g) || []).length;
+  check("U9.3 không còn moHop nào thiếu tên", khongTen === 0, khongTen + " chỗ thiếu");
+
+  // chuyển thi giữa kỳ → về lớp
+  g.S.hetNam = null; g.S.ngay = 4; g.S.lop = 2; g.noiHienTai = "truong"; g.ve();
+  g.vaoThi("gk");
+  check("U9.4 kiểm tra giữa kỳ mở được phòng thi", g.hopHienTai === "thi");
+  let d = 0;
+  while (g.BaiThi && d < 30) { d++; const q = g.BaiThi.de[g.BaiThi.i]; g.traLoi(q.cau.iDung); if (g.BaiThi) g.cauTiep(); }
+  check("U9.5 nộp bài giữa kỳ thì hiện bảng điểm", g.hopHienTai === "giuaky", g.hopHienTai);
+  for (let i = 0; i < 5; i++) g.ve();
+  check("U9.6 bảng điểm giữa kỳ đứng yên qua 5 nhịp", g.hopHienTai === "giuaky");
+
+  const ok = doc.getElementById("btOk");
+  if (typeof ok.onclick === "function") {
+    ok.onclick();
+    check("U9.7 bấm Về lớp thì đóng hộp", g.hopHienTai === null, g.hopHienTai);
+  } else check("U9.7 bấm Về lớp thì đóng hộp", false, "không có nút");
 }
 
 console.log("\n  " + pass + " đạt / " + fail + " lỗi\n");
