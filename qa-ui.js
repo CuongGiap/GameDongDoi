@@ -24,9 +24,10 @@ class El {
   get innerHTML() { return this._html; }
   set innerHTML(v) {
     this._html = String(v); this.children = []; this.options = [];
-    // Phân tích tối giản: rút mọi thẻ có class thành phần tử con phẳng, kèm
-    // data-* và nội dung chữ. Đủ để querySelector của game tìm thấy.
-    const re = /<(\w+)([^>]*\bclass="([^"]*)"[^>]*)>([\s\S]*?)<\/\1>/g;
+    // Phân tích tối giản: quét mọi THẺ MỞ có class thành phần tử con phẳng.
+    // Không bắt cặp thẻ đóng — khớp cặp theo kiểu lười sẽ nuốt luôn các thẻ
+    // lồng bên trong và làm querySelector bỏ sót chúng.
+    const re = /<(\w+)\b([^>]*\bclass="([^"]*)"[^>]*)>/g;
     let m;
     while ((m = re.exec(this._html)) !== null) {
       const el = new El(m[1]);
@@ -34,8 +35,11 @@ class El {
       const dj = /\bdata-(\w+)="([^"]*)"/g;
       let d;
       while ((d = dj.exec(m[2])) !== null) el.dataset[d[1]] = d[2];
+      const ap = m[2].match(/\baria-pressed="([^"]*)"/);
+      if (ap) el["aria-pressed"] = ap[1];
       if (/\bdisabled\b/.test(m[2])) el.disabled = true;
-      el._text = m[4].replace(/<[^>]*>/g, "").trim();
+      const sau = this._html.slice(re.lastIndex).match(/^([^<]*)/);
+      el._text = sau ? sau[1].trim() : "";
       this.children.push(el);
     }
   }
@@ -301,6 +305,60 @@ check("U0.2 vào được màn chơi", kho.manChoi.hidden === false);
     ok.onclick();
     check("U9.7 bấm Về lớp thì đóng hộp", g.hopHienTai === null, g.hopHienTai);
   } else check("U9.7 bấm Về lớp thì đóng hộp", false, "không có nút");
+}
+
+/* ---------- U10: chọn ngoại hình ---------- */
+{
+  const A = g.Engine.AVATARS;
+  check("U10.1 có đủ bộ gương mặt", A.length >= 12, A.length);
+  check("U10.2 không gương mặt nào trùng", new Set(A).size === A.length);
+  check("U10.3 mặc định theo giới tính nằm trong bộ",
+    A.indexOf(g.Engine.avatarMacDinh("nam")) >= 0 &&
+    A.indexOf(g.Engine.avatarMacDinh("nu")) >= 0);
+  check("U10.4 nam và nữ có mặc định khác nhau",
+    g.Engine.avatarMacDinh("nam") !== g.Engine.avatarMacDinh("nu"));
+
+  // tạo nhân vật có chọn mặt
+  const nv = g.Engine.taoNhanVat("A", "nu", Date.now(), A[5]);
+  check("U10.5 giữ đúng gương mặt đã chọn", nv.avatar === A[5], nv.avatar);
+
+  // chọn bậy thì rơi về mặc định, không để state hỏng
+  const nv2 = g.Engine.taoNhanVat("B", "nu", Date.now(), "<script>");
+  check("U10.6 giá trị lạ rơi về mặc định", nv2.avatar === g.Engine.avatarMacDinh("nu"), nv2.avatar);
+  const nv3 = g.Engine.taoNhanVat("C", "nam", Date.now());
+  check("U10.7 không truyền gì cũng có mặc định", nv3.avatar === g.Engine.avatarMacDinh("nam"));
+
+  // bản lưu cũ không có avatar thì vẫn hiển thị được
+  g.S.hetNam = null; g.S.ngay = 1; g.noiHienTai = "nha";
+  delete g.S.avatar;
+  g.ve();
+  check("U10.8 bản lưu cũ thiếu avatar vẫn hiện được mặt",
+    kho.av.textContent === g.Engine.avatarMacDinh(g.S.gioiTinh), kho.av.textContent);
+
+  // đổi giữa chừng
+  g.S.avatar = A[9]; g.ve();
+  check("U10.9 đổi mặt thì thanh đầu trang cập nhật", kho.av.textContent === A[9], kho.av.textContent);
+
+  // hộp đổi ngoại hình
+  check("U10.10 thanh đầu trang có nút đổi ngoại hình", typeof kho.av.onclick === "function");
+  kho.av.onclick();
+  check("U10.11 mở được hộp đổi ngoại hình", g.hopHienTai === "avatar", g.hopHienTai);
+  const o = kho.manHop.querySelectorAll(".av-o");
+  check("U10.12 hộp hiện đủ lựa chọn", o.length === A.length, o.length);
+  const daChon = o.filter(x => x["aria-pressed"] === "true" || x["aria-pressed"] === true);
+  check("U10.13 đánh dấu đúng mặt đang dùng", daChon.length === 1, daChon.length + " ô được đánh dấu");
+
+  for (let i = 0; i < 5; i++) g.ve();
+  check("U10.14 hộp không bị vẽ đè mỗi nhịp", g.hopHienTai === "avatar");
+
+  const xong = doc.getElementById("btAvXong");
+  if (typeof xong.onclick === "function") {
+    xong.onclick();
+    check("U10.15 bấm Xong thì đóng hộp", g.hopHienTai === null, g.hopHienTai);
+  } else check("U10.15 bấm Xong thì đóng hộp", false, "không có nút");
+
+  check("U10.16 đổi mặt không đụng vào chỉ số",
+    g.S.triTue !== undefined && !isNaN(g.Engine.dtb(g.S)));
 }
 
 console.log("\n  " + pass + " đạt / " + fail + " lỗi\n");

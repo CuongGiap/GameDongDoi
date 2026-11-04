@@ -63,6 +63,12 @@ Hệ quả có chủ đích: học chăm mà làm sai hết vẫn trượt, họ
 
 **Thể dục không thi trắc nghiệm** — là môn thực hành nên chấm theo chỉ số Thể chất, đúng như ngoài đời.
 
+## Ngoại hình nhân vật
+
+Chọn một trong 18 gương mặt khi tạo nhân vật, đổi lúc nào cũng được bằng cách bấm vào gương mặt ở thanh đầu trang.
+
+Đây là mức tối giản có chủ ý. Ghép lớp tóc, da, quần áo để v0.2 — bỏ công vẽ nhân vật cho một nguyên mẫu có thể bị bỏ là đúng kiểu lãng phí mà lộ trình này đang tránh. Bản lưu cũ không có trường `avatar` vẫn chạy, rơi về mặc định theo giới tính.
+
 ## Chế độ tua nhanh
 
 Không thể chơi thử một game 7-ngày-một-năm bằng thời gian thật. Mở **Bảng công cụ** ở cuối trang để bật tua nhanh — 1 năm học rút còn ~6 phút, năng lượng hồi 1 điểm mỗi 1,5 giây.
@@ -75,7 +81,7 @@ Không thể chơi thử một game 7-ngày-một-năm bằng thời gian thật
 
 ```
 node qa.js      # 70 ca — engine, cân bằng, ngân hàng câu hỏi
-node qa-ui.js   # 40 ca — tầng giao diện
+node qa-ui.js   # 56 ca — tầng giao diện
 ```
 
 70 ca kiểm thử trên engine, kèm mô phỏng 900 lượt chơi tự động để kiểm tra độ khó.

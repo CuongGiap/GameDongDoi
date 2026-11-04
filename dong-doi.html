@@ -121,8 +121,28 @@ h1, h2, h3 { text-wrap: balance; margin: 0; font-family: var(--f-display); }
 .danh { display: flex; align-items: center; gap: 11px; min-width: 0; }
 .avatar {
   width: 42px; height: 42px; flex: none; border-radius: 50%;
-  display: grid; place-items: center; font-size: 21px;
+  display: grid; place-items: center; font-size: 21px; line-height: 1;
   background: var(--muc-tim-bg); border: 2px solid var(--muc-tim);
+  padding: 0; font-family: inherit; cursor: pointer;
+  transition: transform .12s ease;
+}
+.avatar:hover { transform: scale(1.08); }
+
+/* ---------- Chọn ngoại hình ---------- */
+.av-luoi {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(44px, 1fr));
+  gap: 6px;
+}
+.av-o {
+  aspect-ratio: 1; display: grid; place-items: center;
+  font-size: 23px; line-height: 1; padding: 0;
+  border: 1.5px solid var(--vien-dam); border-radius: 3px;
+  background: var(--paper); color: var(--ink);
+  transition: transform .12s ease, border-color .14s ease;
+}
+.av-o:hover { transform: scale(1.06); border-color: var(--muc-tim); }
+.av-o[aria-pressed="true"] {
+  border-color: var(--muc-tim); border-width: 2.5px; background: var(--muc-tim-bg);
 }
 .danh-chu { min-width: 0; }
 .danh-ten { font-weight: 800; font-size: 16px; letter-spacing: -0.01em; }
@@ -345,7 +365,7 @@ h1, h2, h3 { text-wrap: balance; margin: 0; font-family: var(--f-display); }
 <div class="bia" id="bia" hidden>
   <div class="bia-in">
     <div class="danh">
-      <div class="avatar" id="av">🙂</div>
+      <button class="avatar" id="av" type="button" title="Đổi ngoại hình" aria-label="Đổi ngoại hình">🙂</button>
       <div class="danh-chu">
         <div class="danh-ten" id="hTen">—</div>
         <div class="danh-phu num" id="hPhu">—</div>
@@ -457,6 +477,15 @@ const Engine = (() => {
     { id: "giaoTiep",ten: "Giao tiếp" },
   ];
 
+  // Ngoại hình v0.1: chọn một gương mặt có sẵn. Chưa ghép lớp tóc/da/áo —
+  // thứ đó để v0.2, khi đã biết game đáng làm tiếp.
+  const AVATARS = [
+    "👦", "👦🏻", "👦🏼", "👦🏽", "👦🏾", "👦🏿",
+    "👧", "👧🏻", "👧🏼", "👧🏽", "👧🏾", "👧🏿",
+    "🧒", "🧒🏻", "🧒🏼", "🧒🏽", "🧒🏾", "🧒🏿",
+  ];
+  const avatarMacDinh = gioiTinh => (gioiTinh === "nu" ? "👧" : "👦");
+
   /* --- Lịch năm học: 7 ngày, 2 ngày thi --- */
   function phaNgay(ngay) {
     if (ngay <= 3) return { ma: "hk1",  ten: "Học kỳ I",        thi: false };
@@ -468,10 +497,11 @@ const Engine = (() => {
   function msMotNam(nhanh) { return nhanh ? NAM_NHANH : NAM_THUONG; }
   function msMotAp(nhanh)  { return nhanh ? AP_NHANH  : AP_THUONG;  }
 
-  function taoNhanVat(ten, gioiTinh, nowMs) {
+  function taoNhanVat(ten, gioiTinh, nowMs, avatar) {
     return {
       v: 1,
       ten, gioiTinh,
+      avatar: AVATARS.indexOf(avatar) >= 0 ? avatar : avatarMacDinh(gioiTinh),
       lop: 1,
       ngay: 1,
       tuoiCong: 0,            // tuổi tích luỹ (đơn vị: năm), cộng dồn qua mọi chế độ
@@ -1038,7 +1068,7 @@ const Engine = (() => {
 
   return {
     AP_MAX, NGAY_NAM, LOP_CUOI, MON, CHI_SO, NOI, HANH_DONG,
-    CAU_GIUA_KY, CAU_CUOI_NAM, CAU_HOI,
+    CAU_GIUA_KY, CAU_CUOI_NAM, CAU_HOI, AVATARS, avatarMacDinh,
     taoNhanVat, tick, tuoi, tuoiChuan, tinhTrang, dtb, phaNgay,
     lamHanhDong, nguDay, thiGiuaKy, thiCuoiNam, apDungKetQua,
     layDe, soTroGiup, diemTuBaiLam, chamMon,
@@ -1122,6 +1152,40 @@ function tuoiChu(s) {
   return `${nam} tuổi ${thang} tháng`;
 }
 
+/* ---------- Chọn ngoại hình ---------- */
+function oAvatar(dangChon) {
+  return Engine.AVATARS.map(a =>
+    `<button class="av-o" type="button" data-av="${a}" aria-pressed="${a === dangChon}" aria-label="Gương mặt ${a}">${a}</button>`
+  ).join("");
+}
+
+/* Gắn sự kiện cho lưới avatar. chon(a) được gọi mỗi lần người chơi bấm. */
+function noiLuoiAvatar(idLuoi, chon) {
+  const luoi = document.getElementById(idLuoi);
+  if (!luoi) return;
+  for (const b of luoi.querySelectorAll(".av-o")) {
+    b.onclick = () => {
+      for (const x of luoi.querySelectorAll(".av-o")) x.setAttribute("aria-pressed", "false");
+      b.setAttribute("aria-pressed", "true");
+      chon(b.dataset.av);
+    };
+  }
+}
+
+/* Đổi ngoại hình giữa chừng — bấm vào gương mặt trên thanh đầu trang */
+function manDoiAvatar() {
+  if (!S || hopHienTai) return;          // đang có hộp khác thì thôi
+  const dangChon = S.avatar || Engine.avatarMacDinh(S.gioiTinh);
+  moHop(`
+    <h3>Đổi ngoại hình</h3>
+    <p class="hop-mo">Chọn gương mặt cho ${S.ten}.</p>
+    <div class="av-luoi" id="avLuoi2">${oAvatar(dangChon)}</div>
+    <div style="margin-top:18px"><button class="nut-chinh" id="btAvXong">Xong</button></div>
+  `, "avatar");
+  noiLuoiAvatar("avLuoi2", a => { S.avatar = a; Luu.ghi(S); ve(); });
+  $("btAvXong").onclick = () => { dongHop(); nhip(); };
+}
+
 /* ---------- Màn tạo nhân vật ---------- */
 function manTao() {
   moHop(`
@@ -1138,22 +1202,36 @@ function manTao() {
         <button class="gt" id="gtNu" aria-pressed="false">Nữ</button>
       </div>
     </div>
+    <div class="form-hang">
+      <label>Ngoại hình</label>
+      <div class="av-luoi" id="avLuoi">${oAvatar(Engine.avatarMacDinh("nam"))}</div>
+    </div>
     <button class="nut-chinh" id="btTao">Bắt đầu</button>
     <p class="cc-ghi" style="text-align:center">Tiến trình lưu ngay trong trình duyệt này.</p>
   `, "tao");
 
   let gt = "nam";
+  let av = Engine.avatarMacDinh("nam");
+  let tuChon = false;   // người chơi đã tự chọn mặt thì đừng đổi theo giới tính nữa
+
+  const veLuoi = () => {
+    $("avLuoi").innerHTML = oAvatar(av);
+    noiLuoiAvatar("avLuoi", a => { av = a; tuChon = true; });
+  };
+
   const dat = g => {
     gt = g;
     $("gtNam").setAttribute("aria-pressed", String(g === "nam"));
     $("gtNu").setAttribute("aria-pressed", String(g === "nu"));
+    if (!tuChon) { av = Engine.avatarMacDinh(g); veLuoi(); }
   };
   $("gtNam").onclick = () => dat("nam");
   $("gtNu").onclick = () => dat("nu");
+  veLuoi();
 
   const tao = () => {
     const ten = ($("iTen").value || "").trim() || "Bé An";
-    S = Engine.taoNhanVat(ten, gt, Date.now());
+    S = Engine.taoNhanVat(ten, gt, Date.now(), av);
     nhatKy("Chào đời, bắt đầu lớp 1", 1);
     Luu.ghi(S);
     dongHop();
@@ -1167,6 +1245,7 @@ function manTao() {
 function batDauChoi() {
   $("bia").hidden = false;
   $("manChoi").hidden = false;
+  $("av").onclick = manDoiAvatar;
   hdChuKy = monChuKy = nkChuKy = lichChuKy = csChuKy = null;   // nhân vật mới thì vẽ lại từ đầu
   veNoiBar();
   nhip();
@@ -1199,7 +1278,8 @@ function ve() {
   if (!S) return;
   const t = Engine.tinhTrang(S);
 
-  $("av").textContent = S.gioiTinh === "nu" ? "👧" : "👦";
+  // bản lưu cũ chưa có avatar — rơi về mặc định theo giới tính
+  $("av").textContent = S.avatar || Engine.avatarMacDinh(S.gioiTinh);
   $("hTen").textContent = S.ten;
   const phu = `${tuoiChu(S)} · Lớp ${S.lop} · <span class="cb ${t.lop}">${t.ten}</span>`;
   if ($("hPhu").innerHTML !== phu) $("hPhu").innerHTML = phu;
