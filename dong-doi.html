@@ -439,11 +439,17 @@ const Engine = (() => {
   const DIEM_DAU   = 4.6;                      // đầu năm chưa biết bài — dưới mức đậu
   const QUEN_NGAY  = 0.12;                     // mỗi ngày không ôn thì quên bớt
 
+  // quiz: true  → thi viết, người chơi trả lời câu hỏi thật
+  // quiz: false → môn thực hành, chấm theo chỉ số (Thể dục không thi trắc nghiệm)
   const MON = [
-    { id: "toan", ten: "Toán",    cs: "triTue"   },
-    { id: "van",  ten: "Tiếng Việt", cs: "triTue" },
-    { id: "td",   ten: "Thể dục", cs: "theChat"  },
+    { id: "toan", ten: "Toán",       cs: "triTue",  quiz: true  },
+    { id: "van",  ten: "Tiếng Việt", cs: "triTue",  quiz: true  },
+    { id: "td",   ten: "Thể dục",    cs: "theChat", quiz: false },
   ];
+
+  const CAU_GIUA_KY = 4;   // số câu mỗi môn, kiểm tra giữa kỳ
+  const CAU_CUOI_NAM = 6;  // số câu mỗi môn, thi cuối năm
+  const TY_TRONG_BAI_LAM = 0.7;   // bài làm chiếm 70%, điểm môn tích luỹ 30%
 
   const CHI_SO = [
     { id: "triTue",  ten: "Trí tuệ"   },
@@ -637,19 +643,44 @@ const Engine = (() => {
     return { ok: true, ghi: `Sang ngày ${s.ngay} — ${phaNgay(s.ngay).ten}`, sangNgay: true };
   }
 
-  /* --- Thi --- */
-  function diemThi(s, monId, rng) {
+  /* --- Thi -----------------------------------------------------------------
+     Môn thi viết: điểm do BÀI LÀM THẬT quyết định (70%), điểm môn tích luỹ
+     đóng góp 30%. Học chăm không thay người chơi trả lời đúng, nhưng nâng nền
+     và cho thêm lượt trợ giúp.
+     Môn thực hành (Thể dục): chấm theo chỉ số, không có đề trắc nghiệm.      */
+
+  function diemThucHanh(s, monId, rng) {
     const base = s.diem[monId];
     const mon = MON.find(m => m.id === monId);
-    // Chỉ số nền kéo điểm thi, nhưng có trần — không để một chỉ số gánh cả bảng điểm
+    // Chỉ số nền kéo điểm, nhưng có trần — không để một chỉ số gánh cả bảng điểm
     const boost = Math.max(-1.0, Math.min(1.2, (s[mon.cs] - 40) / 30));
     const mood  = s.tamTrang < 30 ? -1.2 : s.tamTrang < 55 ? -0.4 : 0.2;
     const may   = (rng() - 0.5) * 1.4;
     return Math.max(0, Math.min(10, base + boost + mood + may));
   }
 
-  function thiGiuaKy(s, rng) {
-    const kq = MON.map(m => ({ id: m.id, ten: m.ten, diem: diemThi(s, m.id, rng) }));
+  function diemTuBaiLam(s, monId, dung, tong) {
+    if (!tong) return s.diem[monId];
+    const diemLam = (dung / tong) * 10;
+    const d = diemLam * TY_TRONG_BAI_LAM + s.diem[monId] * (1 - TY_TRONG_BAI_LAM);
+    return Math.max(0, Math.min(10, d));
+  }
+
+  /* lamBai = { toan: {dung, tong}, van: {dung, tong} } — do tầng giao diện thu thập */
+  function chamMon(s, lamBai, rng) {
+    return MON.map(m => {
+      const bl = lamBai && lamBai[m.id];
+      if (m.quiz && bl && bl.tong) {
+        return { id: m.id, ten: m.ten, quiz: true,
+                 dung: bl.dung, tong: bl.tong,
+                 diem: diemTuBaiLam(s, m.id, bl.dung, bl.tong) };
+      }
+      return { id: m.id, ten: m.ten, quiz: false, diem: diemThucHanh(s, m.id, rng) };
+    });
+  }
+
+  function thiGiuaKy(s, lamBai, rng = Math.random) {
+    const kq = chamMon(s, lamBai, rng);
     for (const r of kq) s.diem[r.id] = (s.diem[r.id] * 2 + r.diem) / 3;  // điểm thi kéo điểm môn
     keppBien(s);
     s.ngay += 1;
@@ -658,8 +689,8 @@ const Engine = (() => {
     return { loai: "gk", kq, yeu };
   }
 
-  function thiCuoiNam(s, rng) {
-    const kq = MON.map(m => ({ id: m.id, ten: m.ten, diem: diemThi(s, m.id, rng) }));
+  function thiCuoiNam(s, lamBai, rng = Math.random) {
+    const kq = chamMon(s, lamBai, rng);
     const tb = kq.reduce((t, r) => t + r.diem, 0) / kq.length;
     const liet = kq.filter(r => r.diem < 3.5);
     const dat = tb >= 5 && liet.length === 0;
@@ -688,6 +719,152 @@ const Engine = (() => {
     s.tamTrang = Math.max(0, s.tamTrang - 25);
     for (const m of MON) s.diem[m.id] = DIEM_DAU;
     return { lenLop: false };
+  }
+
+  /* --- Ngân hàng câu hỏi, bám chương trình tiểu học Việt Nam ---------------
+     Quy ước: d[0] LUÔN là đáp án đúng. layDe() xáo lại thứ tự khi ra đề,
+     nên viết câu hỏi mới chỉ cần đặt đáp án đúng lên đầu.
+     Thêm câu hỏi không cần sửa một dòng logic nào.                          */
+  const CAU_HOI = {
+    1: {  // Lớp 1 — cộng trừ phạm vi 20, âm vần, dấu thanh
+      toan: [
+        { h: "3 + 4 = ?",  d: ["7", "8", "6", "5"] },
+        { h: "9 − 5 = ?",  d: ["4", "5", "3", "6"] },
+        { h: "Số liền sau của 7 là số nào?", d: ["8", "6", "9", "7"] },
+        { h: "2 + 6 = ?",  d: ["8", "7", "9", "6"] },
+        { h: "10 − 3 = ?", d: ["7", "6", "8", "13"] },
+        { h: "Số nào lớn nhất: 4, 9, 6, 2?", d: ["9", "6", "4", "2"] },
+        { h: "5 + 5 = ?",  d: ["10", "9", "11", "15"] },
+        { h: "8 − 8 = ?",  d: ["0", "1", "8", "16"] },
+        { h: "Số liền trước của 10 là số nào?", d: ["9", "11", "8", "10"] },
+        { h: "6 + 3 = ?",  d: ["9", "8", "10", "3"] },
+        { h: "Điền dấu thích hợp: 7 … 5", d: [">", "<", "=", "+"] },
+        { h: "4 + 0 = ?",  d: ["4", "0", "5", "40"] },
+        { h: "12 + 5 = ?", d: ["17", "16", "18", "7"] },
+        { h: "18 − 6 = ?", d: ["12", "11", "13", "24"] },
+        { h: "Hình tam giác có mấy cạnh?", d: ["3", "4", "2", "5"] },
+        { h: "Một tuần lễ có mấy ngày?", d: ["7", "5", "6", "10"] },
+      ],
+      van: [
+        { h: "Tiếng “bà” mang dấu thanh gì?", d: ["Dấu huyền", "Dấu sắc", "Dấu hỏi", "Dấu nặng"] },
+        { h: "Chữ cái nào đứng đầu bảng chữ cái tiếng Việt?", d: ["a", "ă", "b", "c"] },
+        { h: "Tiếng “cá” có âm đầu là âm nào?", d: ["c", "a", "k", "á"] },
+        { h: "Từ nào viết đúng chính tả?", d: ["quả", "qủa", "qoả", "cuả"] },
+        { h: "Tiếng “mẹ” mang dấu thanh gì?", d: ["Dấu nặng", "Dấu huyền", "Dấu sắc", "Dấu ngã"] },
+        { h: "Vần của tiếng “lan” là vần nào?", d: ["an", "la", "am", "an̆"] },
+        { h: "Từ nào chỉ con vật?", d: ["mèo", "bàn", "nhà", "cây"] },
+        { h: "Tiếng “trường” bắt đầu bằng âm nào?", d: ["tr", "t", "ch", "th"] },
+        { h: "Tiếng nào mang dấu hỏi?", d: ["bẻ", "bé", "bẽ", "bẹ"] },
+        { h: "Từ nào trái nghĩa với “cao”?", d: ["thấp", "to", "dài", "rộng"] },
+        { h: "Chữ nào là nguyên âm?", d: ["a", "b", "c", "d"] },
+        { h: "Từ nào chỉ màu sắc?", d: ["đỏ", "chạy", "ăn", "ngủ"] },
+        { h: "Câu “Em đi học.” kết thúc bằng dấu gì?", d: ["Dấu chấm", "Dấu phẩy", "Dấu hỏi", "Dấu hai chấm"] },
+        { h: "Tiếng “hoa” có vần gì?", d: ["oa", "ha", "ao", "oe"] },
+        { h: "Từ nào chỉ người trong gia đình?", d: ["mẹ", "ghế", "mưa", "xanh"] },
+        { h: "Tiếng “sách” có mấy chữ cái?", d: ["4", "3", "5", "6"] },
+      ],
+    },
+    2: {  // Lớp 2 — cộng trừ có nhớ trong 100, bảng nhân 2–5, đo lường; từ loại, kiểu câu
+      toan: [
+        { h: "27 + 15 = ?", d: ["42", "32", "43", "41"] },
+        { h: "53 − 28 = ?", d: ["25", "35", "24", "31"] },
+        { h: "4 × 3 = ?",   d: ["12", "7", "14", "9"] },
+        { h: "5 × 5 = ?",   d: ["25", "10", "20", "30"] },
+        { h: "36 + 9 = ?",  d: ["45", "44", "46", "35"] },
+        { h: "1 dm bằng bao nhiêu cm?", d: ["10 cm", "100 cm", "1 cm", "1000 cm"] },
+        { h: "2 × 8 = ?",   d: ["16", "10", "18", "14"] },
+        { h: "70 − 25 = ?", d: ["45", "55", "44", "35"] },
+        { h: "1 giờ bằng bao nhiêu phút?", d: ["60 phút", "100 phút", "30 phút", "24 phút"] },
+        { h: "3 × 7 = ?",   d: ["21", "10", "24", "18"] },
+        { h: "48 + 26 = ?", d: ["74", "64", "75", "72"] },
+        { h: "1 kg bằng bao nhiêu gam?", d: ["1000 g", "100 g", "10 g", "500 g"] },
+        { h: "5 × 9 = ?",   d: ["45", "40", "54", "35"] },
+        { h: "91 − 47 = ?", d: ["44", "54", "43", "56"] },
+        { h: "Hình vuông có mấy cạnh bằng nhau?", d: ["4", "3", "2", "5"] },
+        { h: "1 lít bằng bao nhiêu mi-li-lít?", d: ["1000 ml", "100 ml", "10 ml", "500 ml"] },
+      ],
+      van: [
+        { h: "Từ nào chỉ hoạt động?", d: ["chạy", "bàn", "đẹp", "xanh"] },
+        { h: "Câu “Lan là học sinh.” thuộc kiểu câu nào?", d: ["Ai là gì?", "Ai làm gì?", "Ai thế nào?", "Câu hỏi"] },
+        { h: "Từ nào trái nghĩa với “nhanh”?", d: ["chậm", "mạnh", "vội", "gấp"] },
+        { h: "Từ nào chỉ đặc điểm?", d: ["xinh", "hát", "ghế", "đi"] },
+        { h: "Câu hỏi thường kết thúc bằng dấu gì?", d: ["Dấu chấm hỏi", "Dấu chấm", "Dấu phẩy", "Dấu chấm than"] },
+        { h: "Câu “Mẹ em nấu cơm.” thuộc kiểu câu nào?", d: ["Ai làm gì?", "Ai là gì?", "Ai thế nào?", "Câu cảm"] },
+        { h: "Từ nào viết SAI chính tả?", d: ["ngi ngờ", "nghi ngờ", "nghỉ ngơi", "nghề nghiệp"] },
+        { h: "Từ nào cùng nghĩa với “to”?", d: ["lớn", "nhỏ", "bé", "cao"] },
+        { h: "Dấu phẩy dùng để làm gì?", d: ["Ngăn cách các từ cùng loại", "Kết thúc câu", "Hỏi điều chưa biết", "Bộc lộ cảm xúc"] },
+        { h: "Từ nào chỉ sự vật?", d: ["bút", "vui", "chạy", "nhanh"] },
+        { h: "Câu “Bông hoa rất đẹp.” thuộc kiểu câu nào?", d: ["Ai thế nào?", "Ai làm gì?", "Ai là gì?", "Câu khiến"] },
+        { h: "Từ nào trái nghĩa với “đóng”?", d: ["mở", "khép", "cài", "chặt"] },
+        { h: "Từ nào viết đúng chính tả?", d: ["con trâu", "con châu", "con tru", "con chu"] },
+        { h: "Câu bộc lộ cảm xúc kết thúc bằng dấu gì?", d: ["Dấu chấm than", "Dấu chấm", "Dấu phẩy", "Dấu hai chấm"] },
+        { h: "Từ nào chỉ người?", d: ["cô giáo", "bàn ghế", "cây cối", "con mèo"] },
+        { h: "Chọn chữ đúng: “…àm việc”", d: ["l", "n", "nh", "d"] },
+      ],
+    },
+    3: {  // Lớp 3 — nhân chia trong bảng, số trong 1000, chu vi; so sánh, nhân hoá, từ láy
+      toan: [
+        { h: "7 × 8 = ?",    d: ["56", "54", "63", "48"] },
+        { h: "63 : 9 = ?",   d: ["7", "8", "6", "9"] },
+        { h: "245 + 178 = ?", d: ["423", "413", "433", "323"] },
+        { h: "6 × 9 = ?",    d: ["54", "56", "45", "63"] },
+        { h: "72 : 8 = ?",   d: ["9", "8", "7", "6"] },
+        { h: "Chu vi hình vuông có cạnh 6 cm là bao nhiêu?", d: ["24 cm", "12 cm", "36 cm", "18 cm"] },
+        { h: "500 − 237 = ?", d: ["263", "273", "253", "363"] },
+        { h: "Gấp 7 lên 4 lần được bao nhiêu?", d: ["28", "11", "21", "24"] },
+        { h: "Một năm có mấy tháng?", d: ["12 tháng", "10 tháng", "11 tháng", "52 tháng"] },
+        { h: "48 : 6 = ?",   d: ["8", "7", "9", "6"] },
+        { h: "Chu vi hình chữ nhật dài 8 cm, rộng 3 cm là bao nhiêu?", d: ["22 cm", "11 cm", "24 cm", "26 cm"] },
+        { h: "Giảm 36 đi 4 lần được bao nhiêu?", d: ["9", "32", "40", "8"] },
+        { h: "9 × 9 = ?",    d: ["81", "72", "90", "18"] },
+        { h: "1 m bằng bao nhiêu cm?", d: ["100 cm", "10 cm", "1000 cm", "60 cm"] },
+        { h: "1/4 của 20 là bao nhiêu?", d: ["5", "4", "10", "80"] },
+        { h: "306 + 94 = ?", d: ["400", "390", "410", "300"] },
+      ],
+      van: [
+        { h: "Câu “Trăng tròn như cái đĩa.” dùng biện pháp gì?", d: ["So sánh", "Nhân hoá", "Lặp từ", "Đảo ngữ"] },
+        { h: "Câu “Ông mặt trời thức dậy.” dùng biện pháp gì?", d: ["Nhân hoá", "So sánh", "Liệt kê", "Ẩn dụ"] },
+        { h: "Từ nào là từ ghép?", d: ["hoa hồng", "xanh xao", "lung linh", "rì rào"] },
+        { h: "Từ nào là từ láy?", d: ["long lanh", "bàn ghế", "sách vở", "quần áo"] },
+        { h: "Từ nào trái nghĩa với “siêng năng”?", d: ["lười biếng", "chăm chỉ", "cần cù", "chịu khó"] },
+        { h: "Trong câu “Cây bàng toả bóng mát.”, bộ phận trả lời câu hỏi “Cái gì?” là gì?", d: ["Cây bàng", "toả bóng mát", "bóng mát", "toả"] },
+        { h: "Dấu hai chấm thường dùng để làm gì?", d: ["Báo hiệu lời nói hoặc liệt kê", "Kết thúc câu kể", "Bộc lộ cảm xúc", "Ngăn cách chủ ngữ và vị ngữ"] },
+        { h: "Từ nào cùng nghĩa với “chăm chỉ”?", d: ["siêng năng", "lười nhác", "chậm chạp", "ham chơi"] },
+        { h: "Câu “Bé chạy nhanh như sóc.” so sánh bé với con gì?", d: ["Con sóc", "Con thỏ", "Con nai", "Con mèo"] },
+        { h: "Từ nào chỉ trạng thái?", d: ["vui", "bút", "chạy", "bàn"] },
+        { h: "Câu “Bạn có khoẻ không?” là kiểu câu gì?", d: ["Câu hỏi", "Câu kể", "Câu khiến", "Câu cảm"] },
+        { h: "Chọn chữ đúng: “…inh đẹp”", d: ["x", "s", "ch", "tr"] },
+        { h: "Từ nào viết đúng chính tả?", d: ["giản dị", "dản dị", "giảng dị", "dãn dị"] },
+        { h: "Trong câu “Mưa rơi tí tách.”, từ “tí tách” là từ gì?", d: ["Từ tượng thanh", "Từ tượng hình", "Từ ghép", "Danh từ"] },
+        { h: "Trong câu “Sáng nay, em đi học.”, bộ phận trả lời “Khi nào?” là gì?", d: ["Sáng nay", "em", "đi học", "em đi học"] },
+        { h: "Từ nào trái nghĩa với “hiền lành”?", d: ["hung dữ", "tốt bụng", "nhân hậu", "dịu dàng"] },
+      ],
+    },
+  };
+
+  function xao(arr, rng) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      const t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  }
+
+  /* Rút đề: chọn ngẫu nhiên soCau câu của lớp + môn, xáo cả thứ tự đáp án */
+  function layDe(lop, monId, soCau, rng = Math.random) {
+    const kho = (CAU_HOI[lop] && CAU_HOI[lop][monId]) || [];
+    if (!kho.length) return [];
+    return xao(kho, rng).slice(0, Math.min(soCau, kho.length)).map(c => {
+      const dapAnDung = c.d[0];
+      const da = xao(c.d, rng);
+      return { h: c.h, d: da, iDung: da.indexOf(dapAnDung) };
+    });
+  }
+
+  /* Số lượt trợ giúp 50:50 — học càng kỹ thì vào phòng thi càng đỡ chật vật */
+  function soTroGiup(s, monId) {
+    return Math.max(0, Math.min(3, Math.floor(s.diem[monId] / 2.5)));
   }
 
   /* --- Bộ sự kiện: thuần dữ liệu, thêm nội dung không cần sửa code --- */
@@ -861,8 +1038,10 @@ const Engine = (() => {
 
   return {
     AP_MAX, NGAY_NAM, LOP_CUOI, MON, CHI_SO, NOI, HANH_DONG,
+    CAU_GIUA_KY, CAU_CUOI_NAM, CAU_HOI,
     taoNhanVat, tick, tuoi, tuoiChuan, tinhTrang, dtb, phaNgay,
     lamHanhDong, nguDay, thiGiuaKy, thiCuoiNam, apDungKetQua,
+    layDe, soTroGiup, diemTuBaiLam, chamMon,
     timSuKien, chonSuKien, tenMon, monYeuNhat, heSoTamTrang,
     msMotNam, msMotAp,
   };
@@ -1200,14 +1379,113 @@ function chayHanhDong(id) {
   nhip();
 }
 
+/* ---------- Phòng thi: người chơi trả lời câu hỏi thật ---------- */
+let BaiThi = null;   // { loai, de:[{mon,cau}], i, dapAn:{}, troGiup:{}, daChon }
+
 function vaoThi(loai) {
+  const soCau = loai === "gk" ? Engine.CAU_GIUA_KY : Engine.CAU_CUOI_NAM;
+  const de = [];
+  for (const m of Engine.MON) {
+    if (!m.quiz) continue;
+    for (const c of Engine.layDe(S.lop, m.id, soCau)) de.push({ mon: m, cau: c });
+  }
+  if (!de.length) { chotThi(loai, null); return; }
+
+  BaiThi = {
+    loai, de, i: 0, daChon: null, boBot: null,
+    dapAn: Object.fromEntries(Engine.MON.filter(m => m.quiz).map(m => [m.id, { dung: 0, tong: 0 }])),
+    troGiup: Object.fromEntries(Engine.MON.filter(m => m.quiz).map(m => [m.id, Engine.soTroGiup(S, m.id)])),
+  };
+  veCauHoi();
+}
+
+function veCauHoi() {
+  const B = BaiThi;
+  const q = B.de[B.i];
+  const tg = B.troGiup[q.mon.id];
+  const daTraLoi = B.daChon !== null;
+
+  const dapAn = q.cau.d.map((t, j) => {
+    if (B.boBot && B.boBot.includes(j)) {
+      return `<button class="lc" disabled style="opacity:.25">${t}</button>`;
+    }
+    let style = "";
+    if (daTraLoi) {
+      if (j === q.cau.iDung) style = "border-color:var(--bang-xanh);background:var(--bang-bg);color:var(--bang-xanh)";
+      else if (j === B.daChon) style = "border-color:var(--but-do);background:var(--but-do-bg);color:var(--but-do)";
+    }
+    return `<button class="lc" data-j="${j}" ${daTraLoi ? "disabled" : ""} style="${style}">${t}</button>`;
+  }).join("");
+
+  const dung = daTraLoi && B.daChon === q.cau.iDung;
+  const phanHoi = daTraLoi
+    ? `<p class="phe" style="color:${dung ? "var(--bang-xanh)" : "var(--but-do)"};border-color:${dung ? "var(--bang-xanh)" : "var(--but-do)"}">
+         ${dung ? "Đúng rồi!" : "Chưa đúng. Đáp án là “" + q.cau.d[q.cau.iDung] + "”."}</p>
+       <div style="margin-top:14px"><button class="nut-chinh" id="btTiep">
+         ${B.i + 1 < B.de.length ? "Câu tiếp theo" : "Nộp bài"}</button></div>`
+    : (tg > 0 && !B.boBot
+        ? `<div style="margin-top:12px"><button class="nut-phu" id="btTro" style="width:100%">
+             Bỏ bớt 2 đáp án sai — còn ${tg} lượt</button></div>`
+        : (!B.boBot ? `<p class="cc-ghi">Hết lượt trợ giúp môn này. Học kỹ hơn để có thêm lượt.</p>` : ""));
+
+  moHop(`
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:4px">
+      <span class="cb cb-thuong">${q.mon.ten} · Lớp ${S.lop}</span>
+      <span class="cc-ghi num" style="margin:0">Câu ${B.i + 1}/${B.de.length}</span>
+    </div>
+    <h3 style="margin:10px 0 16px">${q.cau.h}</h3>
+    <div class="lc-list">${dapAn}</div>
+    ${phanHoi}
+  `);
+
+  if (!daTraLoi) {
+    for (const b of document.querySelectorAll(".lc[data-j]")) {
+      b.onclick = () => traLoi(Number(b.dataset.j));
+    }
+    const bt = document.getElementById("btTro");
+    if (bt) bt.onclick = () => {
+      B.troGiup[q.mon.id] -= 1;
+      const sai = q.cau.d.map((_, j) => j).filter(j => j !== q.cau.iDung);
+      B.boBot = xaoMang(sai).slice(0, 2);
+      veCauHoi();
+    };
+  } else {
+    document.getElementById("btTiep").onclick = cauTiep;
+  }
+}
+
+function xaoMang(a) {
+  const b = a.slice();
+  for (let i = b.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const t = b[i]; b[i] = b[j]; b[j] = t;
+  }
+  return b;
+}
+
+function traLoi(j) {
+  const B = BaiThi;
+  const q = B.de[B.i];
+  B.daChon = j;
+  B.dapAn[q.mon.id].tong += 1;
+  if (j === q.cau.iDung) B.dapAn[q.mon.id].dung += 1;
+  veCauHoi();
+}
+
+function cauTiep() {
+  const B = BaiThi;
+  B.i += 1; B.daChon = null; B.boBot = null;
+  if (B.i < B.de.length) { veCauHoi(); return; }
+  const lamBai = B.dapAn, loai = B.loai;
+  BaiThi = null;
+  chotThi(loai, lamBai);
+}
+
+function chotThi(loai, lamBai) {
   if (loai === "gk") {
-    const r = Engine.thiGiuaKy(S, Math.random);
+    const r = Engine.thiGiuaKy(S, lamBai, Math.random);
     Luu.ghi(S);
-    const hang = r.kq.map(x =>
-      `<div class="mon-row"><div class="mon-ten">${x.ten}</div>` +
-      `<div class="mon-diem num" style="color:${x.diem < 4.5 ? "var(--but-do)" : "var(--bang-xanh)"}">${soLam(x.diem)}</div></div>`
-    ).join("");
+    const hang = r.kq.map(hangDiem).join("");
     const phe = r.yeu.length
       ? `<p class="phe">Còn ${r.yeu.map(y => y.ten).join(", ")} chưa đạt. Cố lên con.</p>`
       : `<p class="phe">Giữ được đà này là tốt lắm.</p>`;
@@ -1222,19 +1500,27 @@ function vaoThi(loai) {
     return;
   }
 
-  const r = Engine.thiCuoiNam(S, Math.random);
+  const r = Engine.thiCuoiNam(S, lamBai, Math.random);
   S.hetNam = r;
   Luu.ghi(S);
   manKetNam();
 }
 
+/* Một dòng điểm, kèm số câu đúng nếu là môn thi viết */
+function hangDiem(x) {
+  const mau = x.diem < 3.5 ? "var(--but-do)" : x.diem < 5 ? "#d98324" : "var(--bang-xanh)";
+  const phu = x.quiz
+    ? `<div class="hd-mo num">Đúng ${x.dung}/${x.tong} câu</div>`
+    : `<div class="hd-mo">Chấm theo thể lực</div>`;
+  return `<div class="mon-row"><div class="mon-ten">${x.ten}</div>` +
+         `<div class="mon-diem num" style="color:${mau}">${soLam(x.diem)}</div>${phu}</div>`;
+}
+
 function manKetNam() {
   const r = S.hetNam;
   if (!r) return;
-  const hang = r.kq.map(x =>
-    `<div class="mon-row"><div class="mon-ten">${x.ten}</div>` +
-    `<div class="mon-diem num" style="color:${x.diem < 3.5 ? "var(--but-do)" : "var(--bang-xanh)"}">${soLam(x.diem)}</div></div>`
-  ).join("");
+  if (document.querySelector(".man")) return;   // đang mở hộp khác thì đừng vẽ đè
+  const hang = r.kq.map(hangDiem).join("");
 
   const dat = r.dat;
   const phe = dat
@@ -1264,13 +1550,12 @@ function manKetNam() {
     $("btLai").onclick = () => {
       S.daThiLai = true;
       S.tamTrang = Math.max(0, S.tamTrang - 10);
-      for (const m of Engine.MON) S.diem[m.id] += 0.5;   // ôn hè kéo điểm lên
-      const r2 = Engine.thiCuoiNam(S, Math.random);
-      r2.choThiLai = false;
-      S.hetNam = r2;
+      for (const m of Engine.MON) S.diem[m.id] += 0.5;   // ôn hè kéo nền lên
+      S.hetNam = null;
       nhatKy("Thi lại trong hè", 0);
       Luu.ghi(S);
-      manKetNam();
+      dongHop();
+      vaoThi("ck");      // làm lại đề mới, không phải tung xúc xắc
     };
   }
   $("btNhan").onclick = () => {

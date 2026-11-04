@@ -34,7 +34,34 @@ Tiêu năng lượng vào học → chỉ số nhích lên → thi → lên lớ
 
 Mỗi năm học có 7 ngày: 3 ngày học kỳ I, kiểm tra giữa kỳ, 2 ngày học kỳ II, thi cuối năm.
 
-Lên lớp cần điểm trung bình từ 5,0 **và** không môn nào dưới 3,5. Trượt lần đầu được thi lại trong hè.
+Lên lớp cần điểm trung bình từ 5,0 **và** không môn nào dưới 3,5. Trượt lần đầu được thi lại trong hè bằng một đề mới.
+
+## Thi bằng câu hỏi thật
+
+Kiểm tra giữa kỳ và thi cuối năm là **bài trắc nghiệm thật**, câu hỏi bám chương trình tiểu học Việt Nam theo đúng khối lớp:
+
+| Lớp | Toán | Tiếng Việt |
+|---|---|---|
+| 1 | Cộng trừ phạm vi 20, so sánh, hình cơ bản | Âm vần, dấu thanh, từ loại đơn giản |
+| 2 | Cộng trừ có nhớ trong 100, bảng nhân 2–5, đo lường | Kiểu câu, dấu câu, chính tả |
+| 3 | Nhân chia trong bảng, số trong 1000, chu vi | So sánh, nhân hoá, từ láy, từ ghép |
+
+96 câu, mỗi câu 4 đáp án, xáo thứ tự khi ra đề.
+
+Điểm thi tính theo công thức:
+
+```
+điểm môn = (số câu đúng / tổng số câu) × 10 × 0,7  +  điểm tích luỹ × 0,3
+```
+
+Tức **kiến thức thật quyết định kết quả**, nhưng học trong game vẫn có giá trị:
+
+- Nâng 30% nền điểm
+- Cho lượt **trợ giúp 50:50** — số lượt = điểm môn ÷ 2,5, tối đa 3
+
+Hệ quả có chủ đích: học chăm mà làm sai hết vẫn trượt, học ít mà làm đúng hết vẫn đạt. Việc học giúp người chơi dễ thở hơn trong phòng thi, không thay người chơi trả lời.
+
+**Thể dục không thi trắc nghiệm** — là môn thực hành nên chấm theo chỉ số Thể chất, đúng như ngoài đời.
 
 ## Chế độ tua nhanh
 
@@ -50,7 +77,9 @@ Không thể chơi thử một game 7-ngày-một-năm bằng thời gian thật
 node qa.js
 ```
 
-48 ca kiểm thử trên engine, kèm mô phỏng 900 lượt chơi tự động để kiểm tra độ khó.
+70 ca kiểm thử trên engine, kèm mô phỏng 900 lượt chơi tự động để kiểm tra độ khó.
+
+Trong đó có phần tự kiểm chứng ngân hàng câu hỏi: mọi câu phải đủ 4 đáp án không trùng nhau, vị trí đáp án đúng phải rải đều, một đề không được lặp câu, và **30 câu phép tính được máy giải lại để đối chiếu đáp án**. Đáp án sai trong game dạy trẻ là lỗi thật, không nên để mắt người soát.
 
 `qa.js` rút thẳng khối `Engine` ra từ `dong-doi.html` rồi nạp vào, nên không có bản sao engine nào để lệch nhau.
 
@@ -62,7 +91,7 @@ Mức cân bằng hiện tại:
 | Trung bình | ~4% |
 | Lười | ~80% |
 
-Chạy lại bộ test sau mỗi lần chỉnh số cân bằng (`DIEM_DAU`, `QUEN_NGAY`, chi phí năng lượng). Nó sẽ báo ngay nếu độ khó bị hỏng.
+Chạy lại bộ test sau mỗi lần chỉnh số cân bằng (`DIEM_DAU`, `QUEN_NGAY`, `TY_TRONG_BAI_LAM`, chi phí năng lượng) hoặc sau khi thêm câu hỏi. Nó sẽ báo ngay nếu độ khó bị hỏng hay câu hỏi mới viết sai định dạng.
 
 ## Cấu trúc mã
 
@@ -78,7 +107,9 @@ Bên trong `dong-doi.html` tách làm ba lớp:
 - **`Luu`** — lưu trữ, tách riêng để sau này thay bằng lời gọi API.
 - **Phần giao diện** — chỉ vẽ, không tính toán.
 
-Sự kiện nằm trong mảng `SU_KIEN` dạng thuần dữ liệu. Thêm nội dung chỉ cần thêm object, không đụng logic.
+Sự kiện nằm trong mảng `SU_KIEN`, câu hỏi nằm trong `CAU_HOI`, cả hai đều thuần dữ liệu. Thêm nội dung chỉ cần thêm object, không đụng logic.
+
+Khi viết câu hỏi mới, **đặt đáp án đúng ở vị trí đầu tiên** — `layDe()` tự xáo lại khi ra đề.
 
 ---
 

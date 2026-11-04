@@ -154,14 +154,14 @@ function moi(nhanh = true) {
   const gioi = moi(true);
   for (const m of E.MON) gioi.diem[m.id] = 8.5;
   gioi.triTue = 70; gioi.theChat = 70; gioi.tamTrang = 80;
-  const r1 = E.thiCuoiNam(gioi, rng);
-  check("T7.1 học sinh giỏi thì đạt", r1.dat, "tb=" + r1.tb.toFixed(2));
+  const r1 = E.thiCuoiNam(gioi, {toan:{dung:6,tong:6}, van:{dung:5,tong:6}}, rng);
+  check("T7.1 trả lời đúng gần hết thì đạt", r1.dat, "tb=" + r1.tb.toFixed(2));
 
   const kem = moi(true);
   for (const m of E.MON) kem.diem[m.id] = 2.0;
   kem.triTue = 20; kem.theChat = 20; kem.tamTrang = 20;
-  const r2 = E.thiCuoiNam(kem, rng);
-  check("T7.2 học sinh kém thì trượt", !r2.dat, "tb=" + r2.tb.toFixed(2));
+  const r2 = E.thiCuoiNam(kem, {toan:{dung:1,tong:6}, van:{dung:0,tong:6}}, rng);
+  check("T7.2 trả lời sai gần hết thì trượt", !r2.dat, "tb=" + r2.tb.toFixed(2));
   check("T7.3 trượt lần đầu được thi lại", r2.choThiLai);
 
   // điểm thi luôn trong 0..10
@@ -171,7 +171,8 @@ function moi(nhanh = true) {
     for (const m of E.MON) s.diem[m.id] = Math.random() * 10;
     s.triTue = Math.random() * 100; s.theChat = Math.random() * 100;
     s.tamTrang = Math.random() * 100;
-    for (const k of E.thiCuoiNam(s, Math.random).kq) {
+    const lb={toan:{dung:Math.floor(Math.random()*7),tong:6},van:{dung:Math.floor(Math.random()*7),tong:6}};
+    for (const k of E.thiCuoiNam(s, lb, Math.random).kq) {
       if (k.diem < 0 || k.diem > 10 || Number.isNaN(k.diem)) ngoai++;
     }
   }
@@ -181,7 +182,7 @@ function moi(nhanh = true) {
   const liet = moi(true);
   liet.diem.toan = 10; liet.diem.van = 10; liet.diem.td = 0.1;
   liet.triTue = 50; liet.theChat = 0; liet.tamTrang = 50;
-  const r3 = E.thiCuoiNam(liet, mkRng(7));
+  const r3 = E.thiCuoiNam(liet, {toan:{dung:6,tong:6}, van:{dung:6,tong:6}}, mkRng(7));
   check("T7.5 điểm liệt chặn lên lớp", !r3.dat || r3.liet.length === 0,
     `tb=${r3.tb.toFixed(2)} liet=${r3.liet.length} dat=${r3.dat}`);
 }
@@ -253,7 +254,21 @@ function moi(nhanh = true) {
 }
 
 /* ---------- T10: mô phỏng cân bằng ---------- */
-function moPhong(kieu, seed) {
+// Mo phong nguoi choi co trinh do bietBai (0..1): xac suat tra loi dung moi cau.
+// Doan sai van co 1/4 co hoi trung -> nen hieu suat thuc = biet + (1-biet)*0.25
+function lamBai(soCau, bietBai, rng) {
+  const p = bietBai + (1 - bietBai) * 0.25;
+  const r = {};
+  for (const m of E.MON) {
+    if (!m.quiz) continue;
+    let dung = 0;
+    for (let i = 0; i < soCau; i++) if (rng() < p) dung++;
+    r[m.id] = { dung, tong: soCau };
+  }
+  return r;
+}
+
+function moPhong(kieu, seed, bietBai) {
   const rng = mkRng(seed);
   const s = moi(true);
   let batVo = 0;
@@ -261,13 +276,13 @@ function moPhong(kieu, seed) {
     batVo++;
     const pha = E.phaNgay(s.ngay);
     if (pha.thi) {
-      if (pha.ma === "gk") { E.thiGiuaKy(s, rng); }
+      if (pha.ma === "gk") { E.thiGiuaKy(s, lamBai(E.CAU_GIUA_KY, bietBai, rng), rng); }
       else {
-        let r = E.thiCuoiNam(s, rng);
+        let r = E.thiCuoiNam(s, lamBai(E.CAU_CUOI_NAM, bietBai, rng), rng);
         if (!r.dat && r.choThiLai) {
           s.daThiLai = true;
           for (const m of E.MON) s.diem[m.id] += 0.6;
-          r = E.thiCuoiNam(s, rng);
+          r = E.thiCuoiNam(s, lamBai(E.CAU_CUOI_NAM, bietBai, rng), rng);
         }
         E.apDungKetQua(s, r, NOW);
       }
@@ -307,9 +322,11 @@ function moPhong(kieu, seed) {
 }
 
 {
+  // nguoi choi cham thuong cung nam duoc bai hon — gan trinh do tuong ung
+  const BIET = { cham: 0.80, trungbinh: 0.55, luoi: 0.30 };
   const kq = { cham: [], trungbinh: [], luoi: [] };
   for (let i = 0; i < 300; i++) {
-    for (const k of Object.keys(kq)) kq[k].push(moPhong(k, 1000 + i));
+    for (const k of Object.keys(kq)) kq[k].push(moPhong(k, 1000 + i, BIET[k]));
   }
   const tb = a => a.reduce((x, y) => x + y, 0) / a.length;
   const tyLe = arr => (arr.filter(r => r.luuBan > 0).length / arr.length * 100);
@@ -327,6 +344,120 @@ function moPhong(kieu, seed) {
   check("T10.3 chăm rõ ràng hơn lười", tyLe(kq.cham) < tyLe(kq.luoi) - 30);
   check("T10.4 không vòng lặp vô hạn", kq.cham.every(r => r.batVo < 200));
   check("T10.5 người chăm hoàn thành được nội dung", kq.cham.filter(r=>r.xong).length / 300 > 0.8);
+}
+
+
+/* ---------- T11: ngân hàng câu hỏi ---------- */
+{
+  let tong = 0, loiDinhDang = 0, trung = 0, thieu = 0;
+  const lopCo = Object.keys(E.CAU_HOI);
+  check("T11.1 có đủ ngân hàng cho lớp 1–3",
+    ["1","2","3"].every(l => lopCo.includes(l)), lopCo.join(","));
+
+  for (const lop of lopCo) {
+    for (const m of E.MON.filter(x => x.quiz)) {
+      const kho = E.CAU_HOI[lop][m.id];
+      if (!kho || kho.length < E.CAU_CUOI_NAM) { thieu++; continue; }
+      for (const c of kho) {
+        tong++;
+        if (!c.h || typeof c.h !== "string" || c.h.length < 4) loiDinhDang++;
+        if (!Array.isArray(c.d) || c.d.length !== 4) { loiDinhDang++; continue; }
+        if (c.d.some(x => typeof x !== "string" || !x.trim())) loiDinhDang++;
+        if (new Set(c.d.map(x => x.trim())).size !== 4) trung++;
+      }
+    }
+  }
+  console.log(`      (ngân hàng: ${tong} câu hỏi)`);
+  check("T11.2 mọi câu đều có đúng 4 đáp án, không rỗng", loiDinhDang === 0, "lỗi=" + loiDinhDang);
+  check("T11.3 không câu nào có đáp án trùng nhau", trung === 0, "trùng=" + trung);
+  check("T11.4 mỗi môn mỗi lớp đủ câu để ra đề", thieu === 0, "thiếu=" + thieu);
+  check("T11.5 ngân hàng đủ lớn (≥ 90 câu)", tong >= 90, tong);
+}
+
+/* ---------- T12: tự kiểm chứng đáp án phép tính ---------- */
+{
+  let kiem = 0, sai = 0;
+  const saiCT = [];
+  for (const lop of Object.keys(E.CAU_HOI)) {
+    for (const c of E.CAU_HOI[lop].toan) {
+      const m = c.h.match(/^(\d+)\s*([+×−:])\s*(\d+)\s*=\s*\?$/);
+      if (!m) continue;
+      const a = +m[1], b = +m[3];
+      const dung = m[2] === "+" ? a + b : m[2] === "−" ? a - b : m[2] === "×" ? a * b : a / b;
+      kiem++;
+      const nhan = parseFloat(String(c.d[0]).replace(/[^\d.-]/g, ""));
+      if (nhan !== dung) { sai++; saiCT.push(`${c.h} ghi ${c.d[0]}, đúng phải là ${dung}`); }
+    }
+  }
+  console.log(`      (tự kiểm chứng ${kiem} phép tính)`);
+  check("T12.1 mọi đáp án phép tính đều đúng", sai === 0, saiCT.join(" | "));
+  check("T12.2 có kiểm chứng được phần lớn câu Toán", kiem >= 25, kiem);
+}
+
+/* ---------- T13: ra đề ---------- */
+{
+  const rng = mkRng(99);
+  const de = E.layDe(2, "toan", E.CAU_CUOI_NAM, rng);
+  check("T13.1 ra đủ số câu", de.length === E.CAU_CUOI_NAM, de.length);
+  check("T13.2 mỗi câu có 4 đáp án", de.every(c => c.d.length === 4));
+  check("T13.3 iDung trỏ đúng vào đáp án đúng",
+    de.every(c => c.d[c.iDung] !== undefined));
+
+  // đáp án đúng phải rải đều, không nằm lì một vị trí
+  const viTri = [0, 0, 0, 0];
+  for (let i = 0; i < 4000; i++) {
+    for (const c of E.layDe(1 + (i % 3), i % 2 ? "toan" : "van", 3, Math.random)) viTri[c.iDung]++;
+  }
+  const min = Math.min(...viTri), max = Math.max(...viTri);
+  check("T13.4 vị trí đáp án đúng được xáo đều", min > 0 && max / min < 1.25, viTri.join("/"));
+
+  // không ra trùng câu trong cùng một đề
+  let trungDe = 0;
+  for (let i = 0; i < 1500; i++) {
+    const d = E.layDe(1 + (i % 3), i % 2 ? "toan" : "van", E.CAU_CUOI_NAM, Math.random);
+    if (new Set(d.map(c => c.h)).size !== d.length) trungDe++;
+  }
+  check("T13.5 một đề không lặp lại câu hỏi", trungDe === 0, trungDe);
+
+  check("T13.6 lớp/môn không có ngân hàng thì trả mảng rỗng",
+    E.layDe(99, "toan", 5, Math.random).length === 0 &&
+    E.layDe(1, "td", 5, Math.random).length === 0);
+}
+
+/* ---------- T14: chấm điểm theo bài làm ---------- */
+{
+  const s = moi(true);
+  for (const m of E.MON) s.diem[m.id] = 5;
+  const het = E.diemTuBaiLam(s, "toan", 6, 6);
+  const khong = E.diemTuBaiLam(s, "toan", 0, 6);
+  const nua = E.diemTuBaiLam(s, "toan", 3, 6);
+  check("T14.1 đúng hết thì điểm cao", het >= 8.4, het.toFixed(2));
+  check("T14.2 sai hết thì điểm liệt", khong < 3.5, khong.toFixed(2));
+  check("T14.3 đúng một nửa thì ở giữa", nua > khong && nua < het, nua.toFixed(2));
+
+  // bài làm phải lấn át điểm tích luỹ
+  const cham = moi(true), luoi2 = moi(true);
+  for (const m of E.MON) { cham.diem[m.id] = 9; luoi2.diem[m.id] = 3; }
+  const chamSai = E.diemTuBaiLam(cham, "toan", 0, 6);
+  const luoiDung = E.diemTuBaiLam(luoi2, "toan", 6, 6);
+  check("T14.4 học chăm mà làm sai hết vẫn trượt", chamSai < 3.5, chamSai.toFixed(2));
+  check("T14.5 học ít mà làm đúng hết vẫn đạt", luoiDung >= 7, luoiDung.toFixed(2));
+
+  // trợ giúp tỉ lệ thuận với việc học
+  const a = moi(true), b = moi(true);
+  a.diem.toan = 9; b.diem.toan = 2;
+  check("T14.6 học kỹ thì nhiều lượt trợ giúp hơn",
+    E.soTroGiup(a, "toan") > E.soTroGiup(b, "toan"),
+    E.soTroGiup(a,"toan") + " vs " + E.soTroGiup(b,"toan"));
+  check("T14.7 trợ giúp có trần, không âm",
+    E.soTroGiup(a, "toan") <= 3 && E.soTroGiup(b, "toan") >= 0);
+
+  // Thể dục không thi viết
+  const kq = E.chamMon(moi(true), { toan: {dung:6,tong:6}, van: {dung:6,tong:6} }, mkRng(5));
+  check("T14.8 Thể dục chấm theo thể lực, không trắc nghiệm",
+    kq.find(x => x.id === "td").quiz === false);
+  check("T14.9 Toán và Văn chấm theo bài làm",
+    kq.filter(x => x.quiz).length === 2);
 }
 
 /* ---------- Kết ---------- */
