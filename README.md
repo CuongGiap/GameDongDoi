@@ -74,7 +74,8 @@ Không thể chơi thử một game 7-ngày-một-năm bằng thời gian thật
 ## Kiểm thử
 
 ```
-node qa.js
+node qa.js      # 70 ca — engine, cân bằng, ngân hàng câu hỏi
+node qa-ui.js   # 30 ca — tầng giao diện
 ```
 
 70 ca kiểm thử trên engine, kèm mô phỏng 900 lượt chơi tự động để kiểm tra độ khó.
@@ -98,7 +99,8 @@ Chạy lại bộ test sau mỗi lần chỉnh số cân bằng (`DIEM_DAU`, `QU
 | File | Nội dung |
 |---|---|
 | `dong-doi.html` | Toàn bộ game |
-| `qa.js` | Bộ kiểm thử + mô phỏng cân bằng |
+| `qa.js` | Kiểm thử engine + mô phỏng cân bằng |
+| `qa-ui.js` | Kiểm thử giao diện trên DOM giả |
 | `cost.py` | Mô hình chi phí hạ tầng AWS theo quy mô |
 
 Bên trong `dong-doi.html` tách làm ba lớp:
@@ -127,6 +129,7 @@ Cổng quan trọng nhất là **v0.1 → v0.2**: chơi thử 3 ngày bằng nh�
 
 ## Giới hạn hiện tại
 
-- Bộ test chỉ phủ engine. Chưa test giao diện, đa trình duyệt, khả năng tiếp cận bằng bàn phím và trình đọc màn hình.
+- `qa-ui.js` chạy trên DOM giả tự dựng, không phải trình duyệt thật. Nó bắt được lỗi dựng lại DOM và luồng thao tác, nhưng không thay được việc mở game lên xem.
+- Chưa test đa trình duyệt, khả năng tiếp cận bằng bàn phím và trình đọc màn hình.
 - Tiến trình lưu trong `localStorage`, gắn theo đường dẫn file. Chuyển file sang thư mục khác là mất bản lưu.
 - Số liệu trong `cost.py` là ước tính từ đơn giá tham chiếu, cần kiểm chứng bằng AWS Pricing Calculator trước khi dùng cho bất kỳ cam kết nào.

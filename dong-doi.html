@@ -1161,6 +1161,7 @@ function manTao() {
 function batDauChoi() {
   $("bia").hidden = false;
   $("manChoi").hidden = false;
+  hdChuKy = monChuKy = nkChuKy = lichChuKy = csChuKy = null;   // nhân vật mới thì vẽ lại từ đầu
   veNoiBar();
   nhip();
   if (heNhip) clearInterval(heNhip);
@@ -1194,7 +1195,8 @@ function ve() {
 
   $("av").textContent = S.gioiTinh === "nu" ? "👧" : "👦";
   $("hTen").textContent = S.ten;
-  $("hPhu").innerHTML = `${tuoiChu(S)} · Lớp ${S.lop} · <span class="cb ${t.lop}">${t.ten}</span>`;
+  const phu = `${tuoiChu(S)} · Lớp ${S.lop} · <span class="cb ${t.lop}">${t.ten}</span>`;
+  if ($("hPhu").innerHTML !== phu) $("hPhu").innerHTML = phu;
 
   const dat = (so, bar, v, max) => {
     $(so).textContent = soNguyen(v);
@@ -1216,7 +1218,12 @@ function ve() {
     : "Nhịp thật: 1 năm học = 7 ngày, năng lượng hồi 1 điểm/45 phút. Bật tua nhanh để thử trọn một năm trong ít phút.";
 }
 
+let lichChuKy = null;
 function veLich() {
+  const ky = S.lop + "|" + S.ngay;
+  if (ky === lichChuKy) return;
+  lichChuKy = ky;
+
   const l = $("lich");
   l.innerHTML = "";
   for (let i = 1; i <= Engine.NGAY_NAM; i++) {
@@ -1232,15 +1239,25 @@ function veLich() {
   $("namCb").textContent = `Lớp ${S.lop}`;
 }
 
+/* Vòng lặp chạy mỗi giây. Nếu dựng lại DOM mỗi lần thì thẻ <select> vừa mở
+   đã bị xoá và tạo mới, nhật ký cuộn về đầu, thanh điểm mất hiệu ứng.
+   Nên: chỉ dựng lại khi KHUNG đổi, còn mỗi giây chỉ cập nhật trạng thái. */
+let hdChuKy = null;
+
 function veHanhDong() {
   const noi = Engine.NOI.find(n => n.id === noiHienTai);
   $("noiTen").textContent = noi.ten;
 
   const pha = Engine.phaNgay(S.ngay);
-  const cb = $("noiCb");
-  cb.innerHTML = pha.thi && noiHienTai === "truong"
+  $("noiCb").innerHTML = pha.thi && noiHienTai === "truong"
     ? `<span class="cb cb-xau">${pha.ten}</span>` : "";
 
+  const chuKy = [noiHienTai, pha.ma, !!S.ketThuc].join("|");
+  if (chuKy !== hdChuKy) { hdChuKy = chuKy; dungHanhDong(pha); }
+  capNhatHanhDong();
+}
+
+function dungHanhDong(pha) {
   const ds = $("hdList");
   ds.innerHTML = "";
 
@@ -1253,8 +1270,8 @@ function veHanhDong() {
     const p = document.createElement("p");
     p.className = "cc-ghi";
     p.textContent = pha.ma === "gk"
-      ? "Điểm kiểm tra sẽ kéo điểm môn lên hoặc xuống. Chưa quyết định lên lớp."
-      : "Trung bình từ 5,0 và không môn nào dưới 3,5 thì được lên lớp.";
+      ? `${Engine.CAU_GIUA_KY} câu mỗi môn. Bài làm chiếm 70% số điểm, điểm tích luỹ 30%.`
+      : `${Engine.CAU_CUOI_NAM} câu mỗi môn. Trung bình từ 5,0 và không môn nào dưới 3,5 thì lên lớp.`;
     ds.appendChild(p);
     return;
   }
@@ -1272,11 +1289,11 @@ function veHanhDong() {
     for (const m of Engine.MON) {
       const o = document.createElement("option");
       o.value = m.id;
-      o.textContent = `${m.ten} — ${soLam(S.diem[m.id])}`;
+      o.textContent = m.ten;
       if (m.id === monChon) o.selected = true;
       sel.appendChild(o);
     }
-    sel.onchange = e => { monChon = e.target.value; };
+    sel.onchange = e => { monChon = e.target.value; capNhatHanhDong(); };
     w.append(lb, sel);
     ds.appendChild(w);
   }
@@ -1284,19 +1301,50 @@ function veHanhDong() {
   for (const hd of Engine.HANH_DONG[noiHienTai]) {
     const bt = document.createElement("button");
     bt.className = "hd";
-    const khoaNgu = hd.id === "ngu" && !S.nhanh && S.ap > 4;
-    const thieuAp = hd.ap > 0 && S.ap < hd.ap;
-    bt.disabled = thieuAp || khoaNgu || !!S.ketThuc;
+    bt.dataset.hd = hd.id;
     bt.innerHTML =
       `<span class="hd-ten">${hd.ten}</span>` +
       `<span class="hd-gia">${hd.ap > 0 ? hd.ap + " ⚡" : "Hết ngày"}</span>` +
-      `<span class="hd-mo">${khoaNgu ? "Còn nhiều năng lượng quá — dùng hết đã." : hd.mo}</span>`;
+      `<span class="hd-mo"></span>`;
     bt.onclick = () => chayHanhDong(hd.id);
     ds.appendChild(bt);
   }
 }
 
+/* Chạy mỗi giây. Chỉ ghi vào DOM khi giá trị thật sự đổi — ghi đè vô cớ
+   lên <option> cũng đủ làm danh sách đang mở bị đóng. */
+function capNhatHanhDong() {
+  const sel = document.getElementById("selMon");
+  if (sel) {
+    for (const o of sel.options) {
+      const m = Engine.MON.find(x => x.id === o.value);
+      if (!m) continue;
+      const chu = `${m.ten} — ${soLam(S.diem[m.id])}`;
+      if (o.textContent !== chu) o.textContent = chu;
+    }
+    if (sel.value !== monChon) sel.value = monChon;
+  }
+
+  const ds = Engine.HANH_DONG[noiHienTai] || [];
+  for (const bt of document.querySelectorAll("#hdList .hd")) {
+    const hd = ds.find(h => h.id === bt.dataset.hd);
+    if (!hd) continue;
+    const khoaNgu = hd.id === "ngu" && !S.nhanh && S.ap > 4;
+    const thieuAp = hd.ap > 0 && S.ap < hd.ap;
+    const tat = thieuAp || khoaNgu || !!S.ketThuc;
+    if (bt.disabled !== tat) bt.disabled = tat;
+    const mo = bt.querySelector(".hd-mo");
+    const chu = khoaNgu ? "Còn nhiều năng lượng quá — dùng hết đã." : hd.mo;
+    if (mo.textContent !== chu) mo.textContent = chu;
+  }
+}
+
+let monChuKy = null;
 function veMon() {
+  const ky = Engine.MON.map(m => S.diem[m.id].toFixed(2)).join("|");
+  if (ky === monChuKy) return;   // không đổi thì đừng vẽ lại, để hiệu ứng thanh chạy được
+  monChuKy = ky;
+
   const d = $("monList");
   d.innerHTML = "";
   for (const m of Engine.MON) {
@@ -1314,7 +1362,13 @@ function veMon() {
   $("dtbCb").innerHTML = `<span class="cb ${tb >= 5 ? "cb-tot" : "cb-xau"}">TB ${soLam(tb)}</span>`;
 }
 
+let csChuKy = null;
 function veChiSo() {
+  const ky = Engine.CHI_SO.map(c => Math.round(S[c.id])).join("|") +
+             "|" + Math.round(S.hanhKiem) + "|" + Engine.heSoTamTrang(S) + "|" + (S.tamTrang < 30);
+  if (ky === csChuKy) return;
+  csChuKy = ky;
+
   const d = $("csList");
   d.innerHTML = "";
   for (const c of Engine.CHI_SO) {
@@ -1346,7 +1400,12 @@ function veChiSo() {
   }
 }
 
+let nkChuKy = null;
 function veNhatKy() {
+  const ky = S.nhatKy.length + "|" + (S.nhatKy[0] ? S.nhatKy[0].chu : "");
+  if (ky === nkChuKy) return;   // vẽ lại mỗi giây sẽ đẩy thanh cuộn về đầu
+  nkChuKy = ky;
+
   const d = $("nk");
   d.innerHTML = "";
   if (!S.nhatKy.length) {
