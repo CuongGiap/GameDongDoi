@@ -1,0 +1,10 @@
+# Engine được rút tự động từ dong-doi.html khi chạy qa.js — không commit bản sao
+engine.test.js
+_syntax.js
+
+node_modules/
+__pycache__/
+*.pyc
+
+.DS_Store
+Thumbs.db
